@@ -9,7 +9,10 @@ class Diesel:
 	
 	__cookies=cookielib.CookieJar()
 	__opener=urllib2.build_opener(urllib2.HTTPCookieProcessor(__cookies))
-	
+	__lastUserPageDataId=-1
+	__lastUserPageData=''
+	__lastUserPageDataDateTime=datetime.datetime(1,1,1)
+	__timeThreshold=600
 	#
 	# private methods
 	#
@@ -48,7 +51,7 @@ class Diesel:
 			return date
 
 	def __setRatingById(self,userId,rating):
-		data=self.__getUserPageDataById(userId)
+		data=self.__getUserPageDataById(userId,True)
 
 		if data==None:
 			return None
@@ -61,25 +64,34 @@ class Diesel:
 		response=self.__opener.open(url)
 		return response.read()
 
-	def __getUserPageDataById(self, userId):
-		url='http://diesel.elcat.kg/index.php?showuser='+str(userId)
-		response=self.__opener.open(url)
-		data=response.read().decode('cp1251')
-		
-		if response.geturl()=='http://diesel.elcat.kg/index.php':
-			return None
+	def __getUserPageDataById(self, userId, update=False):
+		if userId == self.__lastUserPageDataId and \
+		(self.__lastUserPageDataDateTime.now()- \
+		self.__lastUserPageDataDateTime).total_seconds()< \
+		self.__timeThreshold and not update:
+			data= self.__lastUserPageData
 		else:
-			return data
+			url='http://diesel.elcat.kg/index.php?showuser='+str(userId)
+			response=self.__opener.open(url)
+			data=response.read().decode('cp1251')
+			self.__lastUserPageDataId=userId
+			self.__lastUserPageData=data
+			self.__lastUserPageDataDateTime=self.__lastUserPageDataDateTime.now()
+		
+			if response.geturl()=='http://diesel.elcat.kg/index.php':
+				data=None
+		
+		return data
 
-	def __getUserGroupByName(self,userName):
-		data=self.__getUserEntryDataByName(userName)
+	def __getUserGroupById(self,userId):
+		data=self.__getUserPageDataById(userId)
 
 		if data==None:
 			return None
-			
-		pattern=u'<br />(.+?)\s+<br /><b>Регистрация:'
+		
+		pattern=u'<!-- MAIN TABLE -->[\W\S]+?<strong>([\W\S]+?)</strong>'
 		result=re.search(pattern,data)
-
+		
 		if result == None:
 			return None
 		else:
@@ -94,7 +106,7 @@ class Diesel:
 		response=self.__opener.open('http://diesel.elcat.kg/index.php?act=members&name_box=begins',name_data)
 		data=response.read().decode('cp1251')
 
-		pattern='<!-- Entry for '+userName
+		pattern='<!-- Entry for '+re.escape(userName)
 		pattern+='([\W\S]+?)'
 		pattern+='<!-- End of Entry -->'
 
@@ -173,16 +185,20 @@ class Diesel:
 			return None
 
 
-	def Login(self,login,password):
-		login_data=urllib.urlencode({'UserName':login,'PassWord':password})
+	def Login(self,login,password,privacy=True):
+		if privacy:
+			login_data=urllib.urlencode({'UserName':login,'PassWord':password,'Privacy':'checked'})
+		else:
+			login_data=urllib.urlencode({'UserName':login,'PassWord':password})
 		self.__opener.open('http://diesel.elcat.kg/index.php?act=Login&CODE=01&CookieDate=1',login_data)
 
 
 	def GetUserGroup(self,user):
 		if isinstance(user,int):
-			return self.__getUserGroupByName(self.GetNameById(user))
+			return self.__getUserGroupById(user)
 		elif isinstance(user,basestring):
-			return  self.__getUserGroupByName(user)
+			return  self.__getUserGroupById(self.GetIdByName(user))
 		else:
 			return None
 
+	
