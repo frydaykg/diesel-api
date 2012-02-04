@@ -3,7 +3,9 @@ import urllib2
 import cookielib
 import re
 import datetime
-
+import string
+import message
+import common
 
 class Diesel:
 	
@@ -117,6 +119,43 @@ class Diesel:
 		else:
 			return result.group(1)
 
+	def __getUserMessagesById(self,userId,top):
+		response=self.__opener.open('http://diesel.elcat.kg/index.php?act=Search&CODE=getalluser&mid='+str(userId))
+		url=response.geturl()
+		
+		
+		
+		m=0
+		p=0
+		result=[]
+		for pp in range(10^20):
+			url2=url+'&st='+str(pp*25)
+			response=self.__opener.open(url2)
+			data=response.read().decode('cp1251')
+			ind=string.find(data,'<div class="borderwrap">')
+			
+			pattern=u'<div class="borderwrap">[\W\S]+?'
+			pattern+=u'showtopic=([\d]+?)&[\W\S]+?'
+			pattern+=u'<div id="post-member-([\d]+?)"[\W\S]+?'
+			pattern+=u'Отправлено: ([\W\S]+?)</span>[\W\S]+?'
+			pattern+=u'<div class="postcolor"[\W\S]+?>([\W\S]+?)'
+			pattern+=u' <!--IBF.ATTACHMENT'
+			r=re.finditer(pattern,data)
+			for mm in r:				
+				mmm=message.Message()
+				mmm.Id=mm.group(2)
+				mmm.Theme=mm.group(1)
+				mmm.DateTime=common.DieselDateToDatetime(mm.group(3))
+				mmm.Text=mm.group(4)
+				
+				result.append(mmm)
+				m=m+1
+				if m>=top:
+					break
+			if m>=top:
+				break
+		return result
+
 
 	#
 	# public methods
@@ -201,4 +240,21 @@ class Diesel:
 		else:
 			return None
 
-	
+	def GetMessages(self,user,top=10^5):
+		if isinstance(user,int):
+			return self.__getUserMessagesById(user,top)
+		elif isinstance(user,basestring):
+			return  self.__getUserMessagesById(self.GetIdByName(user),top)
+		else:
+			return None
+
+	def DeleteUserMessagesById(self,messageId):
+		response=self.__opener.open('http://diesel.elcat.kg/index.php?act=findpost&hl=&pid='+str(messageId))
+		data=response.read().decode('cp1251')
+
+		pattern='(act=Mod&amp;CODE=04&amp;f=.+?&amp;t=.+?&amp;p='+str(messageId)+'&amp;st=.+?&amp;auth_key=.+?)\''
+		r=re.search(pattern,data)
+		end=r.group(1)
+		end=string.replace(end,'amp;','')
+		url='http://diesel.elcat.kg/index.php?'+end
+		self.__opener.open(url)
